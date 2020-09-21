@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kernelvethpair_test
+package kernel_test
 
 import (
 	"io/ioutil"
@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/checkvppagentmechanism"
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/kernelvethpair"
+	kernel2 "github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel"
 )
 
 func TestKernelTapServer(t *testing.T) {
@@ -54,7 +54,7 @@ func TestKernelTapServer(t *testing.T) {
 	kmech := kernel.ToMechanism(mechanism)
 	mechanism.GetParameters()[kernel.InterfaceNameKey] = kmech.GetInterfaceName(testConnToClose)
 	suite.Run(t, checkvppagentmechanism.NewServerSuite(
-		kernelvethpair.NewServer(),
+		kernel2.NewServer(),
 		kernel.MECHANISM,
 		func(t *testing.T, mechanism *networkservice.Mechanism) {},
 		checkVppAgentConfig("server", testRequest),

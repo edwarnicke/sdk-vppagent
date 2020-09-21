@@ -19,9 +19,11 @@ package ipaddress_test
 import (
 	"context"
 	"io/ioutil"
+	"net/url"
 	"testing"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/cls"
 	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/utils/inject/injecterror"
@@ -30,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/connectioncontextkernel/ipcontext/ipaddress"
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/kerneltap"
+	kernel2 "github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel"
 	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/vppagent"
 )
 
@@ -39,6 +41,10 @@ func serverRequest() *networkservice.NetworkServiceRequest {
 		Connection: &networkservice.Connection{
 			Mechanism: &networkservice.Mechanism{
 				Type: kernel.MECHANISM,
+				Cls:  cls.LOCAL,
+				Parameters: map[string]string{
+					kernel.NetNSURL: (&url.URL{Scheme: "file", Path: netnsFileURL}).String(),
+				},
 			},
 			Context: &networkservice.ConnectionContext{
 				IpContext: &networkservice.IPContext{
@@ -52,7 +58,7 @@ func serverRequest() *networkservice.NetworkServiceRequest {
 func TestSetIPKernelServer_Request(t *testing.T) {
 	logrus.SetOutput(ioutil.Discard)
 	server := chain.NewNetworkServiceServer(
-		kerneltap.NewTestableServer(fileInodeToFilename),
+		kernel2.NewServer(),
 		ipaddress.NewServer(),
 	)
 	ctx := vppagent.WithConfig(context.Background())
@@ -72,7 +78,7 @@ func TestSetIPKernelServer_Request(t *testing.T) {
 func TestSetIPKernelServer_Close(t *testing.T) {
 	logrus.SetOutput(ioutil.Discard)
 	server := chain.NewNetworkServiceServer(
-		kerneltap.NewTestableServer(fileInodeToFilename),
+		kernel2.NewServer(),
 		ipaddress.NewServer(),
 	)
 	ctx := vppagent.WithConfig(context.Background())

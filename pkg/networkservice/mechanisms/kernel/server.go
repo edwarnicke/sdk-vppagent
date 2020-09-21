@@ -16,21 +16,76 @@
 
 // +build !windows
 
-// Package kernel provides a networkservice chain element that properly handles
-// the kernel Mechanism
+// Package kernel provides networkservice chain elements that support the kernel Mechanism
 package kernel
 
 import (
+	"context"
+	"fmt"
+	"net/url"
+	"os"
+
+	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
+	"github.com/pkg/errors"
+	"go.ligato.io/vpp-agent/v3/proto/ligato/configurator"
+
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
 
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/kernelvethpair"
+	"github.com/networkservicemesh/sdk/pkg/networkservice/core/next"
+
+	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/vppagent"
+	"github.com/networkservicemesh/sdk-vppagent/pkg/tools/kernelctx"
 )
 
-// NewServer return a NetworkServiceServer chain element that correctly handles the kernel Mechanism
+type kernelMechanismServer struct {
+	template func(conf *configurator.Config, name, ifaceName, netnsFilename string)
+}
+
+// NewServer provides NetworkServiceServer chain elements that support the kernel Mechanism
 func NewServer() networkservice.NetworkServiceServer {
-	// Temporarily commented out until kerneltap is adapted to sendfd/recvfd
-	// if _, err := os.Stat(vnetFilename); err == nil {
-	// 	return kerneltap.NewServer()
-	// }
-	return kernelvethpair.NewServer()
+	rv := &kernelMechanismServer{
+		template: vethPairTemplate,
+	}
+	if _, err := os.Stat(vnetFilename); err == nil {
+		rv.template = tapV2Template
+	}
+	return rv
+}
+
+func (k *kernelMechanismServer) Request(ctx context.Context, request *networkservice.NetworkServiceRequest) (*networkservice.Connection, error) {
+	if mechanism := kernel.ToMechanism(request.GetConnection().GetMechanism()); mechanism != nil {
+		err := k.appendInterfaceConfig(ctx, request.GetConnection())
+		if err != nil {
+			return nil, err
+		}
+		linuxIfaces := vppagent.Config(ctx).GetLinuxConfig().GetInterfaces()
+		ctx = kernelctx.WithServerInterface(ctx, linuxIfaces[len(linuxIfaces)-1])
+	}
+	return next.Server(ctx).Request(ctx, request)
+}
+
+func (k *kernelMechanismServer) Close(ctx context.Context, conn *networkservice.Connection) (*empty.Empty, error) {
+	if mechanism := kernel.ToMechanism(conn.GetMechanism()); mechanism != nil {
+		err := k.appendInterfaceConfig(ctx, conn)
+		if err != nil {
+			return nil, err
+		}
+		linuxIfaces := vppagent.Config(ctx).GetLinuxConfig().GetInterfaces()
+		ctx = kernelctx.WithServerInterface(ctx, linuxIfaces[len(linuxIfaces)-1])
+	}
+	return next.Server(ctx).Close(ctx, conn)
+}
+
+func (k *kernelMechanismServer) appendInterfaceConfig(ctx context.Context, conn *networkservice.Connection) error {
+	netNSURLStr := kernel.ToMechanism(conn.GetMechanism()).GetNetNSURL()
+	netNSURL, err := url.Parse(netNSURLStr)
+	if err != nil {
+		return err
+	}
+	if netNSURL.Scheme != fileScheme {
+		return errors.Errorf("kernel.ToMechanism(conn.GetMechanism()).GetNetNSURL() must be of scheme %q: %q", fileScheme, netNSURL)
+	}
+	k.template(vppagent.Config(ctx), fmt.Sprintf("server-%s", conn.GetId()), kernel.ToMechanism(conn.GetMechanism()).GetInterfaceName(conn), netNSURL.Path)
+	return nil
 }

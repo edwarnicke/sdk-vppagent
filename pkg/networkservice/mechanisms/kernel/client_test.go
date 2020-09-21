@@ -14,10 +14,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kerneltap_test
+package kernel_test
 
 import (
 	"io/ioutil"
+	"net/url"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -27,26 +28,31 @@ import (
 	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/cls"
 	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
 
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/checkkernelmechanism"
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/kerneltap"
+	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/checkvppagentmechanism"
+	kernel2 "github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel"
 )
 
-func TestKernelTapServer(t *testing.T) {
+func TestKernelTapClient(t *testing.T) {
 	// Turn off log output
 	logrus.SetOutput(ioutil.Discard)
-	// Turn off log output
 	logrus.SetOutput(ioutil.Discard)
 	mechanism := &networkservice.Mechanism{
 		Cls:  cls.LOCAL,
 		Type: kernel.MECHANISM,
 		Parameters: map[string]string{
-			kernel.NetNSInodeKey: "12",
+			kernel.NetNSURL: (&url.URL{Scheme: "file", Path: netnsFileURL}).String(),
 		},
 	}
 	testRequest := &networkservice.NetworkServiceRequest{
 		Connection: &networkservice.Connection{
-			Id:        "ConnectionId",
-			Mechanism: mechanism,
+			Id: "ConnectionId",
+			Mechanism: &networkservice.Mechanism{
+				Cls:  cls.LOCAL,
+				Type: kernel.MECHANISM,
+				Parameters: map[string]string{
+					kernel.NetNSURL: (&url.URL{Scheme: "file", Path: netnsFileURL}).String(),
+				},
+			},
 		},
 	}
 	testConnToClose := &networkservice.Connection{
@@ -55,9 +61,11 @@ func TestKernelTapServer(t *testing.T) {
 	}
 	kmech := kernel.ToMechanism(mechanism)
 	mechanism.GetParameters()[kernel.InterfaceNameKey] = kmech.GetInterfaceName(testConnToClose)
-	suite.Run(t, checkkernelmechanism.NewServerSuite(
-		kerneltap.NewTestableServer,
-		checkVppAgentConfig("server", testRequest),
+	suite.Run(t, checkvppagentmechanism.NewClientSuite(
+		kernel2.NewClient(),
+		kernel.MECHANISM,
+		func(t *testing.T, mechanism *networkservice.Mechanism) {},
+		checkVppAgentConfig("client", testRequest),
 		testRequest,
 		testConnToClose,
 	))

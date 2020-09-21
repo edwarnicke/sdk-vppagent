@@ -19,9 +19,11 @@ package ipaddress_test
 import (
 	"context"
 	"io/ioutil"
+	"net/url"
 	"testing"
 
 	"github.com/networkservicemesh/api/pkg/api/networkservice"
+	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/cls"
 	"github.com/networkservicemesh/api/pkg/api/networkservice/mechanisms/kernel"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/core/chain"
 	"github.com/networkservicemesh/sdk/pkg/networkservice/utils/checks/checkcontext"
@@ -33,17 +35,24 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/connectioncontextkernel/ipcontext/ipaddress"
-	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel/kerneltap"
+	kernel2 "github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/mechanisms/kernel"
 	"github.com/networkservicemesh/sdk-vppagent/pkg/networkservice/vppagent"
 )
 
-const IPAddress = "1.1.1.1"
+const (
+	IPAddress    = "1.1.1.1"
+	netnsFileURL = "/proc/12/ns/net"
+)
 
 func clientRequest() *networkservice.NetworkServiceRequest {
 	return &networkservice.NetworkServiceRequest{
 		Connection: &networkservice.Connection{
 			Mechanism: &networkservice.Mechanism{
 				Type: kernel.MECHANISM,
+				Cls:  cls.LOCAL,
+				Parameters: map[string]string{
+					kernel.NetNSURL: (&url.URL{Scheme: "file", Path: netnsFileURL}).String(),
+				},
 			},
 			Context: &networkservice.ConnectionContext{
 				IpContext: &networkservice.IPContext{
@@ -54,16 +63,12 @@ func clientRequest() *networkservice.NetworkServiceRequest {
 	}
 }
 
-func fileInodeToFilename(inode string) (s string, err error) {
-	return "12", nil
-}
-
 func TestSetIPKernelClient(t *testing.T) {
 	logrus.SetOutput(ioutil.Discard)
 	client := chain.NewNetworkServiceClient(
 		checkcontextonreturn.NewClient(t, func(t *testing.T, ctx context.Context) {
 			conf := vppagent.Config(ctx)
-			numInterfaces := len(conf.GetVppConfig().GetInterfaces())
+			numInterfaces := len(conf.GetLinuxConfig().GetInterfaces())
 			require.Greater(t, numInterfaces, 0)
 			numIps := len(conf.GetLinuxConfig().GetInterfaces()[numInterfaces-1].GetIpAddresses())
 			require.Greater(t, numIps, 0)
@@ -75,7 +80,7 @@ func TestSetIPKernelClient(t *testing.T) {
 			expectedConf := vppagent.Config(vppagent.WithConfig(context.Background()))
 			assert.Equal(t, expectedConf, conf)
 		}),
-		kerneltap.NewTestableClient(fileInodeToFilename),
+		kernel2.NewClient(),
 	)
 	conn, err := client.Request(vppagent.WithConfig(context.Background()), clientRequest())
 	assert.NotNil(t, conn)
